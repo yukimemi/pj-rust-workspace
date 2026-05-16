@@ -1,0 +1,30 @@
+name = "pj-rust-workspace"
+version = "0.1.0"
+
+# Workspace-layer extras layered on top of pj-rust. Compose with
+# pj-base + pj-rust (optionally + pj-rust-cli for CLI extras). Brings:
+#   * A Cargo.toml workspace skeleton — resolver=2, empty members[],
+#     shared [workspace.package] / [workspace.dependencies], and
+#     [profile.dev] debug = "line-tables-only" for the Windows PDB
+#     LIMIT (LNK1318) workaround.
+#   * A Makefile.toml [config] fragment turning off cargo-make's
+#     workspace recursion. Our cargo invocations already use
+#     --workspace / --all-targets, so per-member recursion just
+#     duplicates work.
+#
+# `Cargo.toml` lands `when = "once"` so the consumer's hand-edited
+# members[] / workspace.package fields survive subsequent applies;
+# Makefile.toml merges in canonical-from-kata for `[config]` only.
+
+[[file]]
+src = "Cargo.toml.tera"
+dst = "Cargo.toml"
+how = "overwrite"
+when = "once"
+
+[[file]]
+src = "Makefile.toml.fragment"
+dst = "Makefile.toml"
+how = "merge-toml"
+when = "always"
+paths = ["config"]

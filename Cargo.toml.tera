@@ -1,0 +1,27 @@
+[workspace]
+resolver = "2"
+members = []
+
+[workspace.package]
+edition      = "2024"
+rust-version = "1.85"
+# Fill in per consumer:
+#   version      = "0.1.0"
+#   license      = "MIT"
+#   repository   = "https://github.com/<owner>/<repo>"
+#   homepage     = "https://github.com/<owner>/<repo>"
+#   authors      = ["<you> <you@example.com>"]
+
+[profile.dev]
+# Windows MSVC link.exe hits PDB LIMIT (LNK1318) once the dependency
+# tree gets big (axum + sqlx + reqwest + jsonwebtoken + tokio-cron-
+# scheduler + tracing all carry many monomorphisations on the same
+# workspace). Line-tables-only debug info keeps backtraces useful
+# while keeping the PDB inside the linker's per-record limit on
+# Windows. No effect on Linux / macOS builds.
+debug = "line-tables-only"
+
+[workspace.dependencies]
+# Shared dependency pins. Member crates declare them with
+#   foo = { workspace = true }
+# so version bumps happen in one place.
