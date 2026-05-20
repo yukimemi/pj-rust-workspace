@@ -2,8 +2,13 @@
 
 Cargo workspace boilerplate for [kata](https://github.com/yukimemi/kata) consumers.
 
-Compose under `pj-base` + `pj-rust` (and optionally `pj-rust-cli` for
-the CLI extras). Adds two things that don't fit single-crate `pj-rust`:
+Compose under `pj-base` + `pj-rust`. Do NOT also apply `pj-rust-cli`
+on a workspace root — its `release.yml.template` hard-codes a single
+binary name (`BIN_NAME: ${{ github.event.repository.name }}`) that
+doesn't fit a multi-bin workspace. Apply `pj-rust-cli` per-member
+under `crates/<name>/` if any leaf crate ships standalone.
+
+Adds three things that don't fit single-crate `pj-rust`:
 
 - **`Cargo.toml` workspace skeleton** — `resolver = "2"`, empty
   `members = []`, shared `[workspace.package]` /
@@ -14,6 +19,21 @@ the CLI extras). Adds two things that don't fit single-crate `pj-rust`:
   workspace recursion. The yukimemi/* convention runs cargo at the
   workspace root with `--workspace` / `--all-targets`, so per-member
   recursion just duplicates work.
+- **`release.yml`** — workspace-shaped tag-driven release pipeline.
+  Cross-builds every `[[bin]]` in the workspace across the standard
+  4-target matrix (linux x86_64, win x86_64, macOS x86_64 +
+  aarch64), uploads them to a single GitHub Release with
+  `generate_release_notes: true` (auto-summary of PRs since the
+  previous tag), and `cargo publish --locked`es every workspace
+  member whose `publish` field allows crates.io — in topological
+  dependency order so a crate that depends on another doesn't try
+  to publish before its dep is on the registry. Project-specific
+  bits (bin names, publishable members, inter-crate dep order) are
+  discovered from `cargo metadata` at run time so the same file
+  works across every consumer with no rendering. Requires the
+  `CARGO_REGISTRY_TOKEN` secret in each consumer repo; set
+  `package.publish = false` on every member to skip the publish
+  job entirely.
 
 ## Usage
 
