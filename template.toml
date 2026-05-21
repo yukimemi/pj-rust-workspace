@@ -1,8 +1,14 @@
 name = "pj-rust-workspace"
-version = "0.1.0"
+version = "0.2.0"
 
 # Workspace-layer extras layered on top of pj-rust. Compose with
-# pj-base + pj-rust (optionally + pj-rust-cli for CLI extras). Brings:
+# pj-base + pj-rust; do NOT also apply pj-rust-cli on a workspace
+# root — its release.yml.template hard-codes a single-binary shape
+# (`BIN_NAME: ${{ github.event.repository.name }}`) that conflicts
+# with a multi-bin workspace layout. Apply pj-rust-cli per-member
+# under `crates/<name>/` if any leaf crate ships standalone.
+#
+# This layer brings:
 #   * A Cargo.toml workspace skeleton — resolver=2, empty members[],
 #     shared [workspace.package] / [workspace.dependencies], and
 #     [profile.dev] debug = "line-tables-only" for the Windows PDB
@@ -11,10 +17,15 @@ version = "0.1.0"
 #     workspace recursion. Our cargo invocations already use
 #     --workspace / --all-targets, so per-member recursion just
 #     duplicates work.
-#
-# `Cargo.toml` lands `when = "once"` so the consumer's hand-edited
-# members[] / workspace.package fields survive subsequent applies;
-# Makefile.toml merges in canonical-from-kata for `[config]` only.
+#   * A workspace-flavoured release.yml that cross-builds every
+#     [[bin]] in the workspace, attaches them all to a single
+#     GitHub Release (with auto-generated notes), and runs
+#     `cargo publish` against every member whose `publish` field
+#     allows crates.io — in topological dependency order, so a
+#     member that depends on another finds its dep on the registry
+#     already. Project-specific bits (bin names, publishable
+#     members, inter-crate dep order) are discovered from
+#     `cargo metadata` at run time — no per-PJ rendering needed.
 
 [[file]]
 src = "Cargo.toml.tera"
@@ -28,3 +39,14 @@ dst = "Makefile.toml"
 how = "merge-toml"
 when = "always"
 paths = ["config"]
+
+# Tag-driven release pipeline. `.template` suffix keeps GitHub
+# Actions from auto-running the source inside this repo. `when =
+# "once"` mirrors pj-rust-cli's pattern: consumers can drop the
+# publish job, swap the toolchain pin, or otherwise adapt the
+# pipeline without `kata apply` reverting the change.
+[[file]]
+src = ".github/workflows/release.yml.template"
+dst = ".github/workflows/release.yml"
+how = "overwrite"
+when = "once"

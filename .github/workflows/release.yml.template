@@ -1,0 +1,202 @@
+# This workflow is kata-managed by yukimemi/pj-rust-workspace; the
+# render source lives at `.github/workflows/release.yml.template`
+# upstream and the `.template` suffix keeps GitHub Actions from
+# running it inside this repo (same trick `ci.yml.template` uses).
+# Edits in the consumer PJ survive subsequent `kata apply`s because
+# template.toml registers this file with `when = "once"`.
+#
+# Workspace-shaped release pipeline. The same file works across every
+# yukimemi/* Rust workspace repo with no per-PJ patching — every
+# project-specific bit (binary names, publishable library list,
+# inter-crate dep order) is discovered from `cargo metadata` at run
+# time:
+#   * `cargo build --release --workspace --bins` builds every
+#     `[[bin]]` target in the workspace.
+#   * `jq` filters `cargo metadata`'s package list down to those
+#     with `kind: ["bin"]` and stages them under `dist/` with a
+#     per-target filename suffix (`<bin>-<target>` on Unix,
+#     `<bin>-<target>.exe` on Windows).
+#   * The release job downloads every matrix artifact and uploads
+#     them to a GitHub Release. `generate_release_notes: true` lets
+#     GitHub auto-summarise PRs and contributors since the previous
+#     tag — no per-PJ `body:` override needed.
+#   * The publish job topo-sorts every workspace member with a
+#     `publish` field that allows crates.io (i.e. not `publish:
+#     false` / `publish: []`) and `cargo publish --locked -p` each
+#     in dependency order, so a member that depends on another
+#     doesn't try to publish before its dep is on the registry.
+#
+# Each consumer repo needs the `CARGO_REGISTRY_TOKEN` secret set
+# (e.g. `gh secret set CARGO_REGISTRY_TOKEN`) before the first tag
+# push, or set `package.publish = false` on every member to skip
+# the publish job entirely.
+
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+          - target: x86_64-apple-darwin
+            os: macos-latest
+          - target: aarch64-apple-darwin
+            os: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build workspace binaries
+        run: cargo build --release --workspace --bins --target ${{ matrix.target }}
+
+      - name: Stage release artifacts
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          # `cargo metadata --no-deps` enumerates every workspace
+          # member's targets; we keep only `bin` kinds so libs flow
+          # through the `publish` job instead of becoming downloads.
+          bins=$(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[].targets[]
+                       | select(.kind | index("bin"))
+                       | .name' \
+            | sort -u)
+          if [ -z "$bins" ]; then
+            echo "::warning::no [[bin]] targets in this workspace; nothing to stage"
+            exit 0
+          fi
+          for bin in $bins; do
+            if [[ "$TARGET" == *windows* ]]; then
+              src="target/$TARGET/release/$bin.exe"
+              dst="dist/$bin-$TARGET.exe"
+            else
+              src="target/$TARGET/release/$bin"
+              dst="dist/$bin-$TARGET"
+            fi
+            if [ -f "$src" ]; then
+              cp "$src" "$dst"
+              echo "staged $dst"
+            else
+              echo "::warning::missing $src (skipping)"
+            fi
+          done
+          ls -la dist/
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist-${{ matrix.target }}
+          path: dist/*
+
+  release:
+    name: github release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v3
+        with:
+          files: dist/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+
+  publish:
+    name: publish to crates.io
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Publish workspace members
+        shell: bash
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          # Workspace members allowed to publish to crates.io:
+          # cargo records `publish` as `null` (= "anywhere") or a
+          # list of registries; `[]` is the explicit opt-out.
+          publishable=$(cargo metadata --format-version 1 \
+            | jq -r '
+                .workspace_members as $members
+                | .packages
+                  | map(select(.id as $id | $members | index($id)))
+                  | map(select(
+                      .publish == null
+                      or ((.publish | type) == "array" and (.publish | index("crates-io")))
+                    ))
+                  | .[].name
+              ')
+
+          if [ -z "$publishable" ]; then
+            echo "no publishable members; skipping crates.io step"
+            exit 0
+          fi
+
+          # Topologically sort publishable members by their
+          # intra-workspace dep graph (children → parents), then
+          # publish in that order so a crate that depends on
+          # another finds its dep already on the registry.
+          edges=$(cargo metadata --format-version 1 \
+            | jq -r '
+                .workspace_members as $members
+                | .resolve.nodes
+                  | map(select(.id as $id | $members | index($id)))
+                  | .[] as $node
+                  | ($node.id | sub(" .*$"; "")) as $parent
+                  | $node.dependencies[]?
+                  | sub(" .*$"; "") as $child
+                  | "\($child) \($parent)"
+              ' \
+            | awk -v list="$publishable" 'BEGIN {
+                n = split(list, arr, /\n/);
+                for (i = 1; i <= n; i++) keep[arr[i]] = 1;
+              } { if ($1 in keep && $2 in keep) print }')
+
+          # `tsort` outputs parents first when given child→parent
+          # edges, which is exactly the publish order we want
+          # (deps before dependents). Members with no intra-
+          # workspace deps are missing from `edges`; append them
+          # so they still publish.
+          order=$( { echo "$edges" | tsort 2>/dev/null; echo "$publishable"; } \
+                   | awk '!seen[$0]++' \
+                   | grep -Fx -f <(echo "$publishable"))
+
+          echo "publish order:"
+          echo "$order" | sed 's/^/  - /'
+
+          for pkg in $order; do
+            echo "::group::cargo publish -p $pkg"
+            cargo publish --locked -p "$pkg"
+            echo "::endgroup::"
+          done
