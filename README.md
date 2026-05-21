@@ -24,10 +24,10 @@ Adds three things that don't fit single-crate `pj-rust`:
   4-target matrix (linux x86_64, win x86_64, macOS x86_64 +
   aarch64), uploads them to a single GitHub Release with
   `generate_release_notes: true` (auto-summary of PRs since the
-  previous tag), and `cargo publish --locked`es every workspace
-  member whose `publish` field allows crates.io — in topological
-  dependency order so a crate that depends on another doesn't try
-  to publish before its dep is on the registry. Project-specific
+  previous tag), and runs `cargo publish --locked` against every
+  workspace member whose `publish` field allows crates.io — in
+  topological dependency order so a crate that depends on another
+  doesn't try to publish before its dep is on the registry. Project-specific
   bits (bin names, publishable members, inter-crate dep order) are
   discovered from `cargo metadata` at run time so the same file
   works across every consumer with no rendering. Requires the
