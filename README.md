@@ -33,7 +33,15 @@ Adds three things that don't fit single-crate `pj-rust`:
   works across every consumer with no rendering. Requires the
   `CARGO_REGISTRY_TOKEN` secret in each consumer repo; set
   `package.publish = false` on every member to skip the publish
-  job entirely.
+  job entirely. Registered `when = "always"`: upstream improvements
+  to the pipeline (action bumps, jq fixes, …) flow into every
+  consumer on the next `kata apply`. Custom release-time steps
+  (slack notify, binary signing, SBOM generation, …) belong in a
+  **separate sibling workflow** at
+  `.github/workflows/release-extras.yml` (or any name that isn't
+  `release.yml`) — that file isn't kata-managed, and GHA fires
+  every workflow whose `on:` matches the tag push, so the two-file
+  shape behaves identically to a merged single file at run time.
 
 ## Usage
 
