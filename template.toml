@@ -19,9 +19,11 @@ version = "0.2.0"
 #     duplicates work.
 #   * A workspace-flavoured release.yml that cross-builds every
 #     [[bin]] in the workspace, attaches them all to a single
-#     GitHub Release (with auto-generated notes), and topologically
-#     `cargo publish`es every member whose `publish` field allows
-#     crates.io. Project-specific bits (bin names, publishable
+#     GitHub Release (with auto-generated notes), and runs
+#     `cargo publish` against every member whose `publish` field
+#     allows crates.io — in topological dependency order, so a
+#     member that depends on another finds its dep on the registry
+#     already. Project-specific bits (bin names, publishable
 #     members, inter-crate dep order) are discovered from
 #     `cargo metadata` at run time — no per-PJ rendering needed.
 
