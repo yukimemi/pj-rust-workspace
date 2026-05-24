@@ -1,6 +1,6 @@
 [config]
 # cargo-make's default is to enter every workspace member and run the
-# requested task once per member. The yukimemi/* convention runs cargo
+# requested task once per member. The convention here runs cargo
 # directly at the workspace root with --workspace / --all-targets
 # (see pj-rust's Makefile.toml), so per-member recursion just
 # duplicates work and slows `cargo make check` noticeably.
