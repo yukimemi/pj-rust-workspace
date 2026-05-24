@@ -16,7 +16,7 @@ Adds three things that don't fit single-crate `pj-rust`:
   `[profile.dev] debug = "line-tables-only"` for the Windows MSVC
   PDB LIMIT (LNK1318) workaround.
 - **`Makefile.toml` `[config]` fragment** — turns off cargo-make's
-  workspace recursion. The yukimemi/* convention runs cargo at the
+  workspace recursion. The convention here runs cargo at the
   workspace root with `--workspace` / `--all-targets`, so per-member
   recursion just duplicates work.
 - **`release.yml`** — workspace-shaped tag-driven release pipeline.
