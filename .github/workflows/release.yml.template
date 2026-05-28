@@ -113,6 +113,12 @@ jobs:
           ext=""
           if [[ "$TARGET" == *windows* ]]; then ext=".exe"; fi
           rebuilt=0
+          bins_list=$(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[] as $p
+                       | $p.targets[]
+                       | select(.kind | index("bin"))
+                       | "\($p.name)\t\(.name)"' \
+            | sort -u)
           while IFS=$'\t' read -r pkg bin; do
             if [[ -z "$pkg" ]]; then continue; fi
             if [[ ! -f "target/$TARGET/release/${bin}${ext}" ]]; then
@@ -120,14 +126,32 @@ jobs:
               echo "::warning::missing target/$TARGET/release/${bin}${ext} after --workspace --bins; rebuilding via cargo build -p $pkg"
               cargo build -p "$pkg" --release --target "$TARGET"
             fi
-          done < <(cargo metadata --no-deps --format-version 1 \
-            | jq -r '.packages[] as $p
-                       | $p.targets[]
-                       | select(.kind | index("bin"))
-                       | "\($p.name)\t\(.name)"' \
-            | sort -u)
+          done <<< "$bins_list"
           if [[ "$rebuilt" -gt 0 ]]; then
             echo "::notice::verify-and-rebuild fallback fixed $rebuilt missing bin(s) — root cause investigation in progress"
+          fi
+
+          # CodeRabbit #6 MAJOR: hard-verify after the rebuild
+          # pass. If anything is STILL missing, the staging step
+          # below would only warn-and-skip, and the tag would
+          # publish a partial Windows asset set (exactly the bug
+          # this template change is meant to prevent). Loud
+          # `::error::` annotations + non-zero exit on the build
+          # step kill the matrix entry, the release job's `needs:
+          # build` blocks the GitHub Release creation, and the
+          # publish job's `needs: build` blocks crates.io. No
+          # partial state escapes.
+          still_missing=0
+          while IFS=$'\t' read -r pkg bin; do
+            if [[ -z "$pkg" ]]; then continue; fi
+            if [[ ! -f "target/$TARGET/release/${bin}${ext}" ]]; then
+              still_missing=$((still_missing + 1))
+              echo "::error::target/$TARGET/release/${bin}${ext} is STILL missing after per-package rebuild attempt — refusing to ship a partial release"
+            fi
+          done <<< "$bins_list"
+          if [[ "$still_missing" -gt 0 ]]; then
+            echo "::error::$still_missing bin(s) could not be produced; failing the build step"
+            exit 1
           fi
 
       - name: Stage release artifacts
