@@ -1,5 +1,5 @@
 name = "pj-rust-workspace"
-version = "0.3.0"
+version = "0.3.1"
 
 # Workspace-layer extras layered on top of pj-rust. Compose with
 # pj-base + pj-rust; do NOT also apply pj-rust-cli on a workspace
