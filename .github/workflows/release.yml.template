@@ -75,6 +75,17 @@ jobs:
         include:
           - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
+          # ARM64 linux, built NATIVELY on GitHub's arm64 runner
+          # (`ubuntu-24.04-arm`, free for public repos) rather than
+          # cross-compiled — no cross linker/sysroot juggling, and any
+          # crate with a `cc`/`build.rs` step builds the same way it
+          # does on x86_64. This is the target Oracle Cloud's
+          # always-free Ampere A1 VMs (and AWS Graviton, Raspberry Pi
+          # OS 64-bit, …) run.
+          # NOTE: there is no `ubuntu-latest-arm` label — the arm64
+          # runner images are versioned only (`ubuntu-24.04-arm`).
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-24.04-arm
           - target: x86_64-pc-windows-msvc
             os: windows-latest
           # Intel Mac (x86_64-apple-darwin) dropped — Apple Silicon only.
@@ -102,8 +113,12 @@ jobs:
       # crates with a C dependency (or any `cc`/`build.rs` step) fail
       # to link without it. Static musl binaries avoid the glibc-version
       # coupling a `*-linux-gnu` build carries, so they run on more distros.
+      # Matched by substring so BOTH musl targets (x86_64 on
+      # `ubuntu-latest`, aarch64 on `ubuntu-24.04-arm`) get the
+      # toolchain — each runner's `musl-tools` is native to its own
+      # arch, so no cross setup is needed on either.
       - name: install musl toolchain
-        if: matrix.target == 'x86_64-unknown-linux-musl'
+        if: contains(matrix.target, 'linux-musl')
         run: sudo apt-get install -y musl-tools
 
       # rust-embed bakes web/dist/ into the binary at compile time, so any
