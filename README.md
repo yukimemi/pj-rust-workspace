@@ -20,9 +20,9 @@ Adds three things that don't fit single-crate `pj-rust`:
   workspace root with `--workspace` / `--all-targets`, so per-member
   recursion just duplicates work.
 - **`release.yml`** — workspace-shaped tag-driven release pipeline.
-  Cross-builds every `[[bin]]` in the workspace across the standard
-  4-target matrix (linux x86_64, win x86_64, macOS x86_64 +
-  aarch64), uploads them to a single GitHub Release with
+  Builds every `[[bin]]` in the workspace across the standard
+  4-target matrix (linux musl x86_64 + aarch64, win x86_64 msvc,
+  macOS aarch64), uploads them to a single GitHub Release with
   `generate_release_notes: true` (auto-summary of PRs since the
   previous tag), and runs `cargo publish --locked` against every
   workspace member whose `publish` field allows crates.io — in
