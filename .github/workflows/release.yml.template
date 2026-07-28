@@ -136,6 +136,14 @@ jobs:
           fi
       - uses: oven-sh/setup-bun@v2
         if: steps.frontend.outputs.present == 'true'
+      # On the arm64 linux runner this step is SLOW (minutes, not
+      # seconds) but correct: upstream cargo-make ships no
+      # aarch64-unknown-linux-* prebuilt (only x86_64 linux, both
+      # macOS arches, x86_64 windows), so install-action falls back to
+      # building it from source. Only workspaces with an embedded SPA
+      # pay it; if that ever bites, pin a prebuilt-carrying tool or
+      # drop the frontend build to an x86_64-only job that uploads
+      # web/dist/ as an artifact.
       - uses: taiki-e/install-action@v2
         if: steps.frontend.outputs.present == 'true'
         with:
