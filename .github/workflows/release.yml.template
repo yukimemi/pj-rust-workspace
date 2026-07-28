@@ -117,9 +117,36 @@ jobs:
       # `ubuntu-latest`, aarch64 on `ubuntu-24.04-arm`) get the
       # toolchain — each runner's `musl-tools` is native to its own
       # arch, so no cross setup is needed on either.
+      #
+      # The aarch64 entry needs one extra nudge. `cc-rs` picks the C
+      # compiler from a per-target prefix table, and the two musl
+      # targets are NOT handled symmetrically there:
+      #   x86_64-unknown-linux-musl => find_working_gnu_prefix(
+      #                                 ["x86_64-linux-musl", "musl"])
+      #   aarch64-unknown-linux-musl => Some("aarch64-linux-musl")
+      # The x86_64 arm probes the filesystem and lands on `musl-gcc`
+      # (what musl-tools actually installs), with a fallback to plain
+      # `cc` when nothing matches. The aarch64 arm returns its prefix
+      # UNCONDITIONALLY — no existence check, no fallback — so any
+      # crate with a `cc`/`build.rs` step shells out to
+      # `aarch64-linux-musl-gcc`, which musl-tools does not ship, and
+      # the build script dies on command-not-found. `CC_<target>` is
+      # consulted before the prefix table, so pointing it at the
+      # native `musl-gcc` restores the x86_64 behaviour. `AR_<target>`
+      # goes along for the ride: binutils `ar` is arch-agnostic here
+      # and the prefixed name is likewise absent.
       - name: install musl toolchain
         if: contains(matrix.target, 'linux-musl')
-        run: sudo apt-get install -y musl-tools
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y musl-tools
+          if [[ "$TARGET" == aarch64-* ]]; then
+            echo "CC_aarch64_unknown_linux_musl=musl-gcc" >> "$GITHUB_ENV"
+            echo "AR_aarch64_unknown_linux_musl=ar" >> "$GITHUB_ENV"
+          fi
 
       # rust-embed bakes web/dist/ into the binary at compile time, so any
       # workspace that embeds an SPA must build the frontend (via its
