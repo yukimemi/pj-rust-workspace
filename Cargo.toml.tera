@@ -25,3 +25,19 @@ debug = "line-tables-only"
 # Shared dependency pins. Member crates declare them with
 #   foo = { workspace = true }
 # so version bumps happen in one place.
+#
+# This workspace's OWN crates belong here too, not in the member
+# manifests. A published member that another member depends on needs a
+# `version` as well as a `path` — crates.io has to resolve the
+# requirement for somebody who is not building from this checkout:
+#
+#   my-core = { path = "crates/my-core", version = "0.1.0" }
+#
+# That literal does not follow `[workspace.package] version`, so a
+# release bumps both. It fails late when you forget: the requirement is
+# a caret, so a stale pin keeps resolving through every patch release
+# and stops only at the first bump that crosses the minor — with
+# `candidate versions found which didn't match`, in the middle of
+# cutting the release. Keeping them here makes that one place instead
+# of one per member; the README carries the test that stops them
+# drifting from it.
