@@ -1,0 +1,12 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["github>yukimemi/pj-rust"],
+  "packageRules": [
+    {
+      "description": "Consumer-side `release.yml`, rendered by THIS layer from `release.yml.template` with `when = \"once\"`. A once-file is never re-applied, so a Renovate bump here would not be reverted — it would silently diverge from the template every consumer is supposed to share. The canonical `uses:` versions live in the `.template` source, which pj-base's `.template` customManager bumps upstream. Owned here rather than in pj-base because pj-base cannot know a workspace layer composes above it.",
+      "matchManagers": ["github-actions"],
+      "matchFileNames": [".github/workflows/release.yml"],
+      "enabled": false
+    }
+  ]
+}
