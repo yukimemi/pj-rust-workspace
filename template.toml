@@ -50,14 +50,12 @@ paths = ["config"]
 # `Makefile.toml`'s `[config]` block does, just for the whole
 # workflow file instead of a section.
 #
-# Side effect: consumers can't hand-edit `release.yml` and expect
-# the edit to survive a kata apply. Custom release-time steps
-# (notify slack, sign binaries, generate SBOM, …) belong in a
-# **separate sibling workflow** at `.github/workflows/release-
-# extras.yml` (or any name that isn't `release.yml`) — that file
-# isn't kata-managed, and GHA fires every workflow whose `on:`
-# matches the tag push, so the SRP-clean two-file shape behaves
-# identically to a merged single file at run time.
+# Consumers cannot persist hand-edits here. In-job signing and artifact
+# verification belong in scripts/ci/release-post-build.sh (sign before
+# packaging, secretless verify-dist before upload). A consumer-maintained
+# deploy/macos/signing-cert.sha1 makes a missing hook fail the build.
+# Independent notifications may use a sibling workflow, which does not
+# share this job's binaries or gate its uploads.
 [[file]]
 src = ".github/workflows/release.yml.template"
 dst = ".github/workflows/release.yml"
