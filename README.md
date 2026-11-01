@@ -35,13 +35,46 @@ Adds three things that don't fit single-crate `pj-rust`:
   `package.publish = false` on every member to skip the publish
   job entirely. Registered `when = "always"`: upstream improvements
   to the pipeline (action bumps, jq fixes, …) flow into every
-  consumer on the next `kata apply`. Custom release-time steps
-  (slack notify, binary signing, SBOM generation, …) belong in a
-  **separate sibling workflow** at
-  `.github/workflows/release-extras.yml` (or any name that isn't
-  `release.yml`) — that file isn't kata-managed, and GHA fires
-  every workflow whose `on:` matches the tag push, so the two-file
-  shape behaves identically to a merged single file at run time.
+  consumer on the next `kata apply`. In-job signing and artifact checks
+  use the repository-owned hook below. Independent notifications may use
+  a separate sibling workflow, which does not share the build job's files
+  or block its uploads.
+
+## Release signing hooks
+
+Implement `scripts/ci/release-post-build.sh` in the consumer repository.
+The generated workflow invokes it with `bash` (no executable bit required):
+
+1. `sign` runs after the build and missing-binary recovery, before staging.
+   `TARGET` selects the matrix target. Only this step receives
+   `MACOS_SIGN_CERT_P12_BASE64` and `MACOS_SIGN_CERT_PASSWORD` from repository
+   secrets. Sign binaries in `target/$TARGET/release/` in place.
+2. `verify-dist` runs after packaging, before artifact upload, with only
+   `TARGET` in its step environment and no signing credentials. Verify the
+   final archives in `dist/`, including their expected contents and signatures.
+
+Either hook failure fails the build job and blocks upload, release, and
+publish. The hook owns signing policy, credential and certificate validation,
+and target handling (for example, macOS signing and a no-op on other targets).
+The template neither creates nor rotates credentials. Tar packaging disables
+AppleDouble metadata so strict archive verification can require just the binary.
+
+Consumers that require signed releases must retain
+`deploy/macos/signing-cert.sha1` as their opt-in certificate pin. When that
+file exists but the hook is missing, a guard fails before staging on every
+matrix target. The consumer must maintain the pin and hook; removing both
+removes this opt-in. The hook must reject missing or invalid credentials or
+pins when signing is required. A hook without a pin still runs both phases;
+a project with neither file retains the ordinary unsigned release pipeline.
+
+Keep these files outside kata's overwrite rules. This template owns the hook
+calls and guard in `release.yml` with `when = "always"`, so repeated
+`kata apply` preserves the integration without consumer workflow edits.
+
+Run `ruby tests/release_hooks.rb` to check workflow structure, shell syntax,
+kata initialization and repeated application, and failure propagation using
+mock signing hooks. It requires Ruby (with minitest), kata, cargo, and jq;
+it does not use signing credentials or test production certificates.
 
 ## Usage
 
